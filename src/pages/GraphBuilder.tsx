@@ -1,4 +1,4 @@
-import { useCallback, useState, useRef } from 'react'
+import { useCallback, useState, useRef, useEffect } from 'react'
 import {
   ReactFlow,
   Node,
@@ -15,15 +15,23 @@ import {
   BackgroundVariant,
   Panel,
   MiniMap,
+  MarkerType,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { ConnectionType } from '@/types'
 import NodeModal from '@/components/NodeModal'
 import EdgeTypeSelector from '@/components/EdgeTypeSelector'
 import GraphActionsPanel from '@/components/GraphActionsPanel'
+import CustomNode from '@/components/CustomNode'
+import NodeContextMenu from '@/components/NodeContextMenu'
+import IsomorphicGraphsModal from '@/components/IsomorphicGraphsModal'
 
 const initialNodes: Node[] = []
 const initialEdges: Edge[] = []
+
+const nodeTypes = {
+  default: CustomNode,
+}
 
 function GraphBuilder() {
   const [nodes, setNodes] = useState<Node[]>(initialNodes)
@@ -34,7 +42,33 @@ function GraphBuilder() {
   const [selectedNode, setSelectedNode] = useState<Node | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [graphName, setGraphName] = useState('Untitled Graph')
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; node: Node } | null>(null)
+  const [showIsomorphic, setShowIsomorphic] = useState(false)
+  const [keysPressed, setKeysPressed] = useState<Set<string>>(new Set())
   const nodeIdCounter = useRef(1)
+
+  // Keyboard event handlers
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      setKeysPressed((prev) => new Set(prev).add(e.key.toLowerCase()))
+    }
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      setKeysPressed((prev) => {
+        const newSet = new Set(prev)
+        newSet.delete(e.key.toLowerCase())
+        return newSet
+      })
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('keyup', handleKeyUp)
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('keyup', handleKeyUp)
+    }
+  }, [])
 
   const onNodesChange: OnNodesChange = useCallback(
     (changes) => setNodes((nds) => applyNodeChanges(changes, nds)),
@@ -48,6 +82,20 @@ function GraphBuilder() {
 
   const onConnect: OnConnect = useCallback(
     (connection: Connection) => {
+      let markerEnd
+
+      switch (selectedConnectionType) {
+        case ConnectionType.LINEAR:
+          markerEnd = { type: MarkerType.ArrowClosed, color: '#10b981' }
+          break
+        case ConnectionType.CONNECTION:
+          markerEnd = { type: MarkerType.Arrow, color: '#3b82f6' }
+          break
+        case ConnectionType.OPPOSITE:
+          markerEnd = { type: MarkerType.Arrow, color: '#ef4444' }
+          break
+      }
+
       const newEdge: Edge = {
         ...connection,
         id: `e${connection.source}-${connection.target}-${Date.now()}`,
@@ -55,6 +103,7 @@ function GraphBuilder() {
         className: selectedConnectionType,
         data: { connectionType: selectedConnectionType },
         animated: selectedConnectionType === ConnectionType.LINEAR,
+        markerEnd,
       } as Edge
 
       setEdges((eds) => addEdge(newEdge, eds))
@@ -73,21 +122,74 @@ function GraphBuilder() {
       data: {
         label: `Node ${nodeIdCounter.current - 1}`,
         description: '',
+        color: '#3b82f6', // default blue
       },
     }
     setNodes((nds) => [...nds, newNode])
   }, [])
 
   const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
-    setSelectedNode(node)
-    setIsModalOpen(true)
+    const isT = keysPressed.has('t')
+    const isM = keysPressed.has('m')
+
+    if (isT) {
+      // Quick edit label
+      const newLabel = prompt('Edit node label:', String(node.data.label))
+      if (newLabel !== null) {
+        setNodes((nds) =>
+          nds.map((n) =>
+            n.id === node.id
+              ? { ...n, data: { ...n.data, label: newLabel } }
+              : n
+          )
+        )
+      }
+    } else if (isM) {
+      // Quick edit description
+      const newDescription = prompt('Add description/meaning:', String(node.data.description || ''))
+      if (newDescription !== null) {
+        setNodes((nds) =>
+          nds.map((n) =>
+            n.id === node.id
+              ? { ...n, data: { ...n.data, description: newDescription } }
+              : n
+          )
+        )
+      }
+    } else {
+      // Regular click - open modal
+      setSelectedNode(node)
+      setIsModalOpen(true)
+    }
+  }, [keysPressed])
+
+  const onNodeContextMenu = useCallback((event: React.MouseEvent, node: Node) => {
+    event.preventDefault()
+    setContextMenu({
+      x: event.clientX,
+      y: event.clientY,
+      node,
+    })
   }, [])
 
-  const updateNodeData = useCallback((nodeId: string, label: string, description: string) => {
+  const updateNodeData = useCallback((
+    nodeId: string,
+    label: string,
+    description: string,
+    color?: string
+  ) => {
     setNodes((nds) =>
       nds.map((node) =>
         node.id === nodeId
-          ? { ...node, data: { ...node.data, label, description } }
+          ? {
+              ...node,
+              data: {
+                ...node.data,
+                label,
+                description,
+                ...(color && { color })
+              }
+            }
           : node
       )
     )
@@ -150,6 +252,8 @@ function GraphBuilder() {
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         onNodeClick={onNodeClick}
+        onNodeContextMenu={onNodeContextMenu}
+        nodeTypes={nodeTypes}
         fitView
         className="bg-gray-800"
       >
@@ -157,7 +261,7 @@ function GraphBuilder() {
         <Controls className="bg-gray-700 border-gray-600" />
         <MiniMap
           className="bg-gray-700 border-gray-600"
-          nodeColor="#3b82f6"
+          nodeColor={(node) => String(node.data.color || '#3b82f6')}
           maskColor="rgba(0, 0, 0, 0.5)"
         />
 
@@ -183,6 +287,19 @@ function GraphBuilder() {
             nodeCount={nodes.length}
             edgeCount={edges.length}
           />
+
+          <button
+            onClick={() => setShowIsomorphic(true)}
+            className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded transition-colors font-medium"
+          >
+            Show Isomorphic Graphs
+          </button>
+
+          <div className="text-xs text-gray-400 space-y-1 border-t border-gray-700 pt-2">
+            <div>💡 Press <kbd className="px-1 bg-gray-700 rounded">T</kbd> + click to quick edit label</div>
+            <div>💡 Press <kbd className="px-1 bg-gray-700 rounded">M</kbd> + click to add meaning</div>
+            <div>💡 Right-click node to view meaning</div>
+          </div>
         </Panel>
       </ReactFlow>
 
@@ -192,6 +309,24 @@ function GraphBuilder() {
           onClose={() => setIsModalOpen(false)}
           node={selectedNode}
           onSave={updateNodeData}
+        />
+      )}
+
+      {contextMenu && (
+        <NodeContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          node={contextMenu.node}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
+
+      {showIsomorphic && (
+        <IsomorphicGraphsModal
+          isOpen={showIsomorphic}
+          onClose={() => setShowIsomorphic(false)}
+          currentNodes={nodes}
+          currentEdges={edges}
         />
       )}
     </div>
