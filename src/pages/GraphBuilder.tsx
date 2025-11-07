@@ -25,6 +25,8 @@ import GraphActionsPanel from '@/components/GraphActionsPanel'
 import CustomNode from '@/components/CustomNode'
 import NodeContextMenu from '@/components/NodeContextMenu'
 import IsomorphicGraphsModal from '@/components/IsomorphicGraphsModal'
+import { saveGraph } from '@/services/graphService'
+import { getCurrentUsername } from '@/services/userService'
 
 const initialNodes: Node[] = []
 const initialEdges: Edge[] = []
@@ -42,12 +44,13 @@ function GraphBuilder() {
   const [selectedNode, setSelectedNode] = useState<Node | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [graphName, setGraphName] = useState('Untitled Graph')
+  const [graphDescription, setGraphDescription] = useState('')
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; node: Node } | null>(null)
   const [showIsomorphic, setShowIsomorphic] = useState(false)
   const [keysPressed, setKeysPressed] = useState<Set<string>>(new Set())
+  const [saving, setSaving] = useState(false)
   const nodeIdCounter = useRef(1)
 
-  // Keyboard event handlers
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       setKeysPressed((prev) => new Set(prev).add(e.key.toLowerCase()))
@@ -122,7 +125,7 @@ function GraphBuilder() {
       data: {
         label: `Node ${nodeIdCounter.current - 1}`,
         description: '',
-        color: '#3b82f6', // default blue
+        color: '#3b82f6',
       },
     }
     setNodes((nds) => [...nds, newNode])
@@ -133,31 +136,24 @@ function GraphBuilder() {
     const isM = keysPressed.has('m')
 
     if (isT) {
-      // Quick edit label
       const newLabel = prompt('Edit node label:', String(node.data.label))
       if (newLabel !== null) {
         setNodes((nds) =>
           nds.map((n) =>
-            n.id === node.id
-              ? { ...n, data: { ...n.data, label: newLabel } }
-              : n
+            n.id === node.id ? { ...n, data: { ...n.data, label: newLabel } } : n
           )
         )
       }
     } else if (isM) {
-      // Quick edit description
       const newDescription = prompt('Add description/meaning:', String(node.data.description || ''))
       if (newDescription !== null) {
         setNodes((nds) =>
           nds.map((n) =>
-            n.id === node.id
-              ? { ...n, data: { ...n.data, description: newDescription } }
-              : n
+            n.id === node.id ? { ...n, data: { ...n.data, description: newDescription } } : n
           )
         )
       }
     } else {
-      // Regular click - open modal
       setSelectedNode(node)
       setIsModalOpen(true)
     }
@@ -165,11 +161,7 @@ function GraphBuilder() {
 
   const onNodeContextMenu = useCallback((event: React.MouseEvent, node: Node) => {
     event.preventDefault()
-    setContextMenu({
-      x: event.clientX,
-      y: event.clientY,
-      node,
-    })
+    setContextMenu({ x: event.clientX, y: event.clientY, node })
   }, [])
 
   const updateNodeData = useCallback((
@@ -181,33 +173,51 @@ function GraphBuilder() {
     setNodes((nds) =>
       nds.map((node) =>
         node.id === nodeId
-          ? {
-              ...node,
-              data: {
-                ...node.data,
-                label,
-                description,
-                ...(color && { color })
-              }
-            }
+          ? { ...node, data: { ...node.data, label, description, ...(color && { color }) } }
           : node
       )
     )
   }, [])
 
   const clearGraph = useCallback(() => {
-    setNodes([])
-    setEdges([])
-    nodeIdCounter.current = 1
-  }, [])
+    if (nodes.length === 0) return
+    if (confirm('Are you sure you want to clear the graph?')) {
+      setNodes([])
+      setEdges([])
+      nodeIdCounter.current = 1
+    }
+  }, [nodes.length])
+
+  const handleSaveGraph = useCallback(async () => {
+    const username = getCurrentUsername()
+    if (!username) {
+      alert('Please sign in to save graphs!')
+      return
+    }
+
+    if (nodes.length === 0) {
+      alert('Cannot save an empty graph!')
+      return
+    }
+
+    if (!graphName || graphName.trim() === '') {
+      alert('Please enter a graph name!')
+      return
+    }
+
+    setSaving(true)
+    try {
+      await saveGraph(graphName, graphDescription, nodes, edges)
+      alert('Graph saved successfully! 🎉')
+    } catch (error: any) {
+      alert(`Error saving graph: ${error.message}`)
+    } finally {
+      setSaving(false)
+    }
+  }, [graphName, graphDescription, nodes, edges])
 
   const exportGraph = useCallback(() => {
-    const graphData = {
-      name: graphName,
-      nodes,
-      edges,
-      createdAt: new Date().toISOString(),
-    }
+    const graphData = { name: graphName, description: graphDescription, nodes, edges, createdAt: new Date().toISOString() }
     const dataStr = JSON.stringify(graphData, null, 2)
     const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr)
     const exportFileDefaultName = `${graphName.replace(/\s+/g, '-').toLowerCase()}.json`
@@ -216,7 +226,7 @@ function GraphBuilder() {
     linkElement.setAttribute('href', dataUri)
     linkElement.setAttribute('download', exportFileDefaultName)
     linkElement.click()
-  }, [graphName, nodes, edges])
+  }, [graphName, graphDescription, nodes, edges])
 
   const importGraph = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -227,14 +237,11 @@ function GraphBuilder() {
       try {
         const graphData = JSON.parse(e.target?.result as string)
         setGraphName(graphData.name || 'Imported Graph')
+        setGraphDescription(graphData.description || '')
         setNodes(graphData.nodes || [])
         setEdges(graphData.edges || [])
 
-        // Update counter to avoid ID conflicts
-        const maxId = Math.max(
-          ...graphData.nodes.map((n: Node) => parseInt(n.id.split('-')[1]) || 0),
-          0
-        )
+        const maxId = Math.max(...graphData.nodes.map((n: Node) => parseInt(n.id.split('-')[1]) || 0), 0)
         nodeIdCounter.current = maxId + 1
       } catch (error) {
         alert('Error importing graph: Invalid file format')
@@ -255,50 +262,67 @@ function GraphBuilder() {
         onNodeContextMenu={onNodeContextMenu}
         nodeTypes={nodeTypes}
         fitView
-        className="bg-gray-800"
+        className="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900"
       >
-        <Background color="#4B5563" variant={BackgroundVariant.Dots} />
-        <Controls className="bg-gray-700 border-gray-600" />
+        <Background color="#4B5563" variant={BackgroundVariant.Dots} gap={20} size={1.5} />
+        <Controls className="bg-gray-800 bg-opacity-80 backdrop-blur-md border-gray-700 shadow-xl" />
         <MiniMap
-          className="bg-gray-700 border-gray-600"
+          className="bg-gray-800 bg-opacity-80 backdrop-blur-md border-gray-700 shadow-xl"
           nodeColor={(node) => String(node.data.color || '#3b82f6')}
-          maskColor="rgba(0, 0, 0, 0.5)"
+          maskColor="rgba(0, 0, 0, 0.6)"
         />
 
-        <Panel position="top-left" className="bg-gray-800 p-4 rounded-lg border border-gray-700 shadow-lg space-y-3">
-          <input
-            type="text"
-            value={graphName}
-            onChange={(e) => setGraphName(e.target.value)}
-            className="w-full px-3 py-2 bg-gray-700 text-white rounded border border-gray-600 focus:outline-none focus:border-blue-500"
-            placeholder="Graph name"
-          />
+        <Panel position="top-left" className="bg-gray-800 bg-opacity-90 backdrop-blur-md p-5 rounded-xl border border-gray-700 shadow-2xl space-y-4 max-w-xs">
+          <div className="space-y-3">
+            <input
+              type="text"
+              value={graphName}
+              onChange={(e) => setGraphName(e.target.value)}
+              className="w-full px-4 py-2 bg-gray-700 text-white rounded-lg border border-gray-600 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500 transition-all font-medium"
+              placeholder="Graph name"
+            />
+            <textarea
+              value={graphDescription}
+              onChange={(e) => setGraphDescription(e.target.value)}
+              className="w-full px-4 py-2 bg-gray-700 text-white rounded-lg border border-gray-600 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500 transition-all resize-none text-sm"
+              placeholder="Description (optional)"
+              rows={2}
+            />
+          </div>
 
-          <EdgeTypeSelector
-            selected={selectedConnectionType}
-            onChange={setSelectedConnectionType}
-          />
+          <EdgeTypeSelector selected={selectedConnectionType} onChange={setSelectedConnectionType} />
 
           <GraphActionsPanel
             onAddNode={addNode}
             onClear={clearGraph}
             onExport={exportGraph}
             onImport={importGraph}
+            onSave={handleSaveGraph}
             nodeCount={nodes.length}
             edgeCount={edges.length}
           />
 
           <button
             onClick={() => setShowIsomorphic(true)}
-            className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded transition-colors font-medium"
+            disabled={saving}
+            className="w-full px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-lg transition-all transform hover:scale-105 font-medium shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Show Isomorphic Graphs
+            🔍 Show Isomorphic Graphs
           </button>
 
-          <div className="text-xs text-gray-400 space-y-1 border-t border-gray-700 pt-2">
-            <div>💡 Press <kbd className="px-1 bg-gray-700 rounded">T</kbd> + click to quick edit label</div>
-            <div>💡 Press <kbd className="px-1 bg-gray-700 rounded">M</kbd> + click to add meaning</div>
-            <div>💡 Right-click node to view meaning</div>
+          <div className="text-xs text-gray-400 space-y-1 border-t border-gray-700 pt-3">
+            <div className="flex items-center space-x-2">
+              <span>💡</span>
+              <span>Press <kbd className="px-1.5 py-0.5 bg-gray-700 rounded text-blue-400 font-mono">T</kbd> + click to quick edit</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <span>💡</span>
+              <span>Press <kbd className="px-1.5 py-0.5 bg-gray-700 rounded text-purple-400 font-mono">M</kbd> + click for meaning</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <span>💡</span>
+              <span>Right-click to view details</span>
+            </div>
           </div>
         </Panel>
       </ReactFlow>
@@ -328,6 +352,17 @@ function GraphBuilder() {
           currentNodes={nodes}
           currentEdges={edges}
         />
+      )}
+
+      {saving && (
+        <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center backdrop-blur-sm z-50">
+          <div className="bg-gray-800 rounded-xl p-8 border border-gray-700 shadow-2xl">
+            <div className="flex items-center space-x-4">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+              <span className="text-white text-lg font-medium">Saving graph...</span>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

@@ -3,6 +3,7 @@ interface GraphActionsPanelProps {
   onClear: () => void
   onExport: () => void
   onImport: (event: React.ChangeEvent<HTMLInputElement>) => void
+  onSave: () => void
   nodeCount: number
   edgeCount: number
 }
@@ -12,33 +13,47 @@ function GraphActionsPanel({
   onClear,
   onExport,
   onImport,
+  onSave,
   nodeCount,
   edgeCount,
 }: GraphActionsPanelProps) {
   return (
     <div className="space-y-3">
-      <div className="text-sm text-gray-400">
-        <div>Nodes: {nodeCount}</div>
-        <div>Edges: {edgeCount}</div>
+      <div className="text-sm bg-gradient-to-r from-blue-600 to-purple-600 bg-opacity-20 p-3 rounded-lg border border-blue-500 border-opacity-30">
+        <div className="flex justify-between">
+          <span className="text-gray-300">Nodes:</span>
+          <span className="font-bold text-blue-400">{nodeCount}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-gray-300">Edges:</span>
+          <span className="font-bold text-purple-400">{edgeCount}</span>
+        </div>
       </div>
 
       <div className="space-y-2">
         <button
           onClick={onAddNode}
-          className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors font-medium"
+          className="w-full px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-lg transition-all transform hover:scale-105 font-medium shadow-lg"
         >
-          + Add Node
+          ✨ Add Node
+        </button>
+
+        <button
+          onClick={onSave}
+          className="w-full px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-700 hover:from-green-700 hover:to-emerald-800 text-white rounded-lg transition-all transform hover:scale-105 font-medium shadow-lg"
+        >
+          💾 Save to Database
         </button>
 
         <button
           onClick={onExport}
-          className="w-full px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded transition-colors font-medium"
+          className="w-full px-4 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700 text-white rounded-lg transition-all transform hover:scale-105 font-medium shadow-lg"
         >
-          Export Graph
+          📥 Export JSON
         </button>
 
-        <label className="block w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded transition-colors font-medium text-center cursor-pointer">
-          Import Graph
+        <label className="block w-full px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-lg transition-all transform hover:scale-105 font-medium text-center cursor-pointer shadow-lg">
+          📤 Import JSON
           <input
             type="file"
             accept=".json"
@@ -49,9 +64,9 @@ function GraphActionsPanel({
 
         <button
           onClick={onClear}
-          className="w-full px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded transition-colors font-medium"
+          className="w-full px-4 py-2 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white rounded-lg transition-all transform hover:scale-105 font-medium shadow-lg"
         >
-          Clear Graph
+          🗑️ Clear Graph
         </button>
       </div>
     </div>
