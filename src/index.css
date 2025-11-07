@@ -33,29 +33,52 @@ body {
 /* React Flow custom styles */
 .react-flow__node {
   border-radius: 8px;
-  padding: 10px;
-  border: 2px solid #1a192b;
-  background: white;
-  color: #1a192b;
+  padding: 0;
+  border: none;
+  background: transparent;
 }
 
 .react-flow__node.selected {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 2px #3b82f6;
+  border: none;
 }
 
+/* Edge styles with colored arrows */
 .react-flow__edge.opposite {
   stroke: #ef4444 !important;
+  stroke-width: 2.5 !important;
 }
 
 .react-flow__edge.connection {
   stroke: #3b82f6 !important;
+  stroke-width: 2.5 !important;
 }
 
 .react-flow__edge.linear {
   stroke: #10b981 !important;
+  stroke-width: 2.5 !important;
 }
 
 .react-flow__edge-path {
-  stroke-width: 2;
+  stroke-width: 2.5;
+}
+
+/* Custom arrow markers */
+.react-flow__arrowhead {
+  fill: currentColor;
+}
+
+/* Handle styles */
+.react-flow__handle {
+  width: 10px;
+  height: 10px;
+  background: #555;
+  border: 2px solid #fff;
+}
+
+.react-flow__handle-top {
+  top: -5px;
+}
+
+.react-flow__handle-bottom {
+  bottom: -5px;
 }
