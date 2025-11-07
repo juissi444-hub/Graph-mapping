@@ -4,13 +4,34 @@
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- Users table (can also use Supabase Auth)
+-- Users table (links to Supabase Auth)
+-- The id matches auth.users.id for proper authentication
 CREATE TABLE IF NOT EXISTS users (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   username TEXT UNIQUE NOT NULL,
   email TEXT UNIQUE NOT NULL,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Function to handle new user creation
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.users (id, username, email)
+  VALUES (
+    NEW.id,
+    COALESCE(NEW.raw_user_meta_data->>'username', SPLIT_PART(NEW.email, '@', 1)),
+    NEW.email
+  );
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Trigger to create user profile on signup
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
 -- Graphs table
 CREATE TABLE IF NOT EXISTS graphs (
@@ -108,6 +129,10 @@ ALTER TABLE ratings ENABLE ROW LEVEL SECURITY;
 -- Users can read all users
 CREATE POLICY "Users are viewable by everyone" ON users
   FOR SELECT USING (true);
+
+-- Users can insert their own profile (triggered by signup)
+CREATE POLICY "Users can insert own profile" ON users
+  FOR INSERT WITH CHECK (auth.uid() = id);
 
 -- Users can update their own profile
 CREATE POLICY "Users can update own profile" ON users

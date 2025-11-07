@@ -14,7 +14,7 @@ function GraphCard({ graph, onUpdate }: GraphCardProps) {
   const [submitting, setSubmitting] = useState(false)
 
   const handleRate = async (rating: number) => {
-    const username = getCurrentUsername()
+    const username = await getCurrentUsername()
     if (!username) {
       alert('Please sign in to rate graphs!')
       return

@@ -1,8 +1,5 @@
 import { supabase } from './supabase'
 
-const USERNAME_KEY = 'graph_mapping_username'
-const USER_ID_KEY = 'graph_mapping_user_id'
-
 export interface User {
   id: string
   username: string
@@ -10,95 +7,183 @@ export interface User {
 }
 
 /**
- * Get or create user session
+ * Sign up a new user with username, email, and password
  */
-export async function ensureUser(): Promise<User | null> {
-  // Check if user already exists in localStorage
-  const savedUsername = localStorage.getItem(USERNAME_KEY)
-  const savedUserId = localStorage.getItem(USER_ID_KEY)
+export async function signUp(username: string, email: string, password: string): Promise<User | null> {
+  if (!username || username.trim().length === 0) {
+    throw new Error('Username is required')
+  }
+  if (!email || email.trim().length === 0) {
+    throw new Error('Email is required')
+  }
+  if (!password || password.length < 6) {
+    throw new Error('Password must be at least 6 characters')
+  }
 
-  if (savedUsername && savedUserId) {
-    // Verify user exists in database
-    const { data, error } = await supabase
-      .from('users')
-      .select('*')
-      .eq('id', savedUserId)
-      .single()
+  const trimmedUsername = username.trim()
+  const trimmedEmail = email.trim().toLowerCase()
 
-    if (!error && data) {
-      return data as User
-    }
+  // Check if username already exists
+  const { data: existingUser } = await supabase
+    .from('users')
+    .select('username')
+    .eq('username', trimmedUsername)
+    .single()
+
+  if (existingUser) {
+    throw new Error('Username already taken')
+  }
+
+  // Sign up with Supabase Auth
+  const { data: authData, error: authError } = await supabase.auth.signUp({
+    email: trimmedEmail,
+    password: password,
+    options: {
+      data: {
+        username: trimmedUsername,
+      },
+    },
+  })
+
+  if (authError) {
+    console.error('Error signing up:', authError)
+    throw new Error(authError.message || 'Failed to sign up')
+  }
+
+  if (!authData.user) {
+    throw new Error('Failed to create user')
+  }
+
+  // Get the user profile that was created by the trigger
+  const { data: userProfile } = await supabase
+    .from('users')
+    .select('*')
+    .eq('id', authData.user.id)
+    .single()
+
+  if (userProfile) {
+    return userProfile as User
+  }
+
+  // If profile doesn't exist yet (trigger might be slow), return basic info
+  return {
+    id: authData.user.id,
+    username: trimmedUsername,
+    email: trimmedEmail,
+  }
+}
+
+/**
+ * Sign in with email and password
+ */
+export async function signIn(email: string, password: string): Promise<User | null> {
+  if (!email || email.trim().length === 0) {
+    throw new Error('Email is required')
+  }
+  if (!password || password.length === 0) {
+    throw new Error('Password is required')
+  }
+
+  const trimmedEmail = email.trim().toLowerCase()
+
+  const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+    email: trimmedEmail,
+    password: password,
+  })
+
+  if (authError) {
+    console.error('Error signing in:', authError)
+    throw new Error(authError.message || 'Failed to sign in')
+  }
+
+  if (!authData.user) {
+    throw new Error('Failed to sign in')
+  }
+
+  // Get user profile
+  const { data: userProfile } = await supabase
+    .from('users')
+    .select('*')
+    .eq('id', authData.user.id)
+    .single()
+
+  if (userProfile) {
+    return userProfile as User
   }
 
   return null
 }
 
 /**
- * Create a new user or login
+ * Sign out current user
  */
-export async function createOrLoginUser(username: string): Promise<User | null> {
-  if (!username || username.trim().length === 0) {
-    throw new Error('Username is required')
+export async function signOut(): Promise<void> {
+  const { error } = await supabase.auth.signOut()
+  if (error) {
+    console.error('Error signing out:', error)
+    throw new Error('Failed to sign out')
   }
-
-  const trimmedUsername = username.trim()
-
-  // Check if username already exists
-  const { data: existingUser, error: checkError } = await supabase
-    .from('users')
-    .select('*')
-    .eq('username', trimmedUsername)
-    .single()
-
-  if (!checkError && existingUser) {
-    // User exists, login
-    localStorage.setItem(USERNAME_KEY, existingUser.username)
-    localStorage.setItem(USER_ID_KEY, existingUser.id)
-    return existingUser as User
-  }
-
-  // Create new user
-  const { data: newUser, error: createError } = await supabase
-    .from('users')
-    .insert([
-      {
-        username: trimmedUsername,
-        email: `${trimmedUsername}@graphmapping.local`,
-      },
-    ])
-    .select()
-    .single()
-
-  if (createError) {
-    console.error('Error creating user:', createError)
-    throw new Error('Failed to create user')
-  }
-
-  // Save to localStorage
-  localStorage.setItem(USERNAME_KEY, newUser.username)
-  localStorage.setItem(USER_ID_KEY, newUser.id)
-
-  return newUser as User
 }
 
 /**
- * Logout current user
+ * Get current user from session
  */
-export function logoutUser(): void {
-  localStorage.removeItem(USERNAME_KEY)
-  localStorage.removeItem(USER_ID_KEY)
+export async function getCurrentUser(): Promise<User | null> {
+  const { data: { user: authUser } } = await supabase.auth.getUser()
+
+  if (!authUser) {
+    return null
+  }
+
+  // Get user profile
+  const { data: userProfile } = await supabase
+    .from('users')
+    .select('*')
+    .eq('id', authUser.id)
+    .single()
+
+  if (userProfile) {
+    return userProfile as User
+  }
+
+  return null
 }
 
 /**
  * Get current username
  */
-export function getCurrentUsername(): string | null {
-  return localStorage.getItem(USERNAME_KEY)
+export async function getCurrentUsername(): Promise<string | null> {
+  const user = await getCurrentUser()
+  return user ? user.username : null
 }
 
 /**
  * Get current user ID
  */
-export function getCurrentUserId(): string | null {
-  return localStorage.getItem(USER_ID_KEY)
+export async function getCurrentUserId(): Promise<string | null> {
+  const { data: { user } } = await supabase.auth.getUser()
+  return user ? user.id : null
+}
+
+/**
+ * Check if user is authenticated
+ */
+export async function isAuthenticated(): Promise<boolean> {
+  const { data: { user } } = await supabase.auth.getUser()
+  return !!user
+}
+
+/**
+ * Get current session
+ */
+export async function getSession() {
+  const { data: { session } } = await supabase.auth.getSession()
+  return session
+}
+
+// Legacy compatibility - kept for backward compatibility but now async
+export function getCurrentUserId_sync(): string | null {
+  // This is a temporary hack - components should be updated to use async version
+  console.warn('getCurrentUserId_sync is deprecated, use async getCurrentUserId instead')
+  return null
 }

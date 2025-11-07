@@ -13,7 +13,7 @@ export async function saveGraph(
   nodes: Node[],
   edges: Edge[]
 ): Promise<string | null> {
-  const userId = getCurrentUserId()
+  const userId = await getCurrentUserId()
   if (!userId) {
     throw new Error('You must be logged in to save graphs')
   }
@@ -141,7 +141,7 @@ export async function getGraphs(sortBy: SortBy = SortBy.LATEST): Promise<GraphWi
  * Rate a graph
  */
 export async function rateGraph(graphId: string, rating: number): Promise<void> {
-  const userId = getCurrentUserId()
+  const userId = await getCurrentUserId()
   if (!userId) {
     throw new Error('You must be logged in to rate graphs')
   }
@@ -174,7 +174,7 @@ export async function rateGraph(graphId: string, rating: number): Promise<void> 
  * Get user's rating for a graph
  */
 export async function getUserRating(graphId: string): Promise<number | null> {
-  const userId = getCurrentUserId()
+  const userId = await getCurrentUserId()
   if (!userId) return null
 
   const { data, error } = await supabase
@@ -210,7 +210,7 @@ export async function getLeaderboard() {
  * Delete a graph (only if owned by current user)
  */
 export async function deleteGraph(graphId: string): Promise<void> {
-  const userId = getCurrentUserId()
+  const userId = await getCurrentUserId()
   if (!userId) {
     throw new Error('You must be logged in')
   }

@@ -189,7 +189,7 @@ function GraphBuilder() {
   }, [nodes.length])
 
   const handleSaveGraph = useCallback(async () => {
-    const username = getCurrentUsername()
+    const username = await getCurrentUsername()
     if (!username) {
       alert('Please sign in to save graphs!')
       return
