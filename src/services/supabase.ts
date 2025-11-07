@@ -1,11 +1,16 @@
 import { createClient } from '@supabase/supabase-js'
 
 // @ts-ignore - Vite env types
-const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || ''
+const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || 'https://placeholder.supabase.co'
 // @ts-ignore - Vite env types
-const supabaseAnonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY || ''
+const supabaseAnonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY || 'placeholder-key'
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: false,
+    autoRefreshToken: false,
+  },
+})
 
 // Database types (will be auto-generated from Supabase later)
 export interface Database {
